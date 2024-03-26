@@ -112,7 +112,7 @@ def match_and_remove(self, cat, ra, dec):
 
 
 def write_cat_clean_TP(self, cat_clean):
-    cat_clean.write(self.polanalysisdir + '/TP_cat_clean.txt', format='ascii')
+    cat_clean.write(self.polanalysisdir + '/TP_cat_clean.txt', format='ascii', overwrite=True)
 
 
 def match_and_remove_TP(infits, cat, ra, dec):
@@ -133,7 +133,7 @@ def match_and_remove_TP(infits, cat, ra, dec):
 
 
 def write_cat_clean(self, cat_clean):
-    cat_clean.write(self.polanalysisdir + '/PI_cat_clean.txt', format='ascii')
+    cat_clean.write(self.polanalysisdir + '/PI_cat_clean.txt', format='ascii', overwrite=True)
 
 
 def get_RM(self):

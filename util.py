@@ -247,3 +247,21 @@ def blank_image(template, outfile):
         data = hdul[0].data
         nandata = np.full_like(data, np.nan)
     pyfits.writeto(outfile, data=nandata, header=hdul[0].header)
+
+
+def in_ellipse(x, y, x_0, y_0, a, b, alpha):
+    A = (np.square((np.cos(alpha))) / np.square(a)) + ((np.square(np.sin(alpha)))/np.square(b))
+    B = 2 * np.cos(alpha) * np.sin(alpha) * ((1.0/np.square(a)) - (1.0/np.square(b)))
+    C = ((np.square(np.sin(alpha))) / np.square(a)) + (np.square(np.cos(alpha)) / np.square(b))
+    z = A * np.square(x-x_0) + B * (x-x_0) * (y-y_0) + C * np.square(y-y_0)
+    if z < 1:
+        return True
+    else:
+        return False
+
+def calc_MED(data, c = 0.6745):
+    # calculate the MED from the median of data
+    data = np.ma.masked_where(data != data, data)
+    d = np.ma.median(data, axis = 0)
+    med =  np.ma.median(np.ma.fabs(data - d) / c)
+    return med

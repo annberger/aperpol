@@ -20,6 +20,7 @@ def cross_id(self):
     PI_filt = load_filter_rename_PIcat(self)
     TP_cat = gen_TP_cat(self)
     PI_TP = cross_match_TP(self, PI_filt, TP_cat)
+    print(PI_TP.colnames)
     PI_wise = cross_match_wise(self, PI_TP)
     PI_nvss = cross_match_nvss(self, PI_wise)
     PI_sdss = cross_match_sdss(self, PI_nvss)
@@ -28,13 +29,15 @@ def cross_id(self):
 
 def load_filter_rename_PIcat(self):
     PI_cat = Table.read(self.polanalysisdir + '/PI_cat_clean.txt', format='ascii')
-    PI_cat_filtered = PI_cat['Isl_id','RA','E_RA','DEC','E_DEC','Total_flux','E_Total_flux','Peak_flux','E_Peak_flux','S_Code','RM_Comp','RM_Comp_err','Isl_rms','DC_Maj','DC_Min','DC_PA']
+    PI_cat_filtered = PI_cat['Isl_id','RA','E_RA','DEC','E_DEC','Isl_Total_flux','E_Isl_Total_flux','Total_flux','E_Total_flux','Peak_flux','E_Peak_flux','S_Code','RM_Comp','RM_Comp_err','Isl_rms','DC_Maj','DC_Min','DC_PA']
     PI_cat_filtered.rename_column('RA', 'RA_Comp')
     PI_cat_filtered.rename_column('E_RA', 'RA_Comp_err')
     PI_cat_filtered.rename_column('DEC', 'DEC_Comp')
     PI_cat_filtered.rename_column('E_DEC', 'DEC_Comp_err')
-    PI_cat_filtered.rename_column('Total_flux', 'PI_Comp')
-    PI_cat_filtered.rename_column('E_Total_flux', 'PI_Comp_err')
+    PI_cat_filtered.rename_column('Total_flux', 'PI_Comp_fit') # Changed from PI_Comp
+    PI_cat_filtered.rename_column('E_Total_flux', 'PI_Comp_fit_err') # Changed from PI_Comp_err
+    PI_cat_filtered.rename_column('Isl_Total_flux', 'PI_Comp_Isl') # This is no component flux! Only taken as this, to not loose the ISL flux and for cases where multiple Isl get combined!
+    PI_cat_filtered.rename_column('E_Isl_Total_flux', 'PI_Comp_Isl_err')
     PI_cat_filtered.rename_column('Peak_flux', 'PI_Comp_Peak')
     PI_cat_filtered.rename_column('E_Peak_flux', 'PI_Comp_Peak_err')
     PI_cat_filtered.rename_column('Isl_rms', 'PI_rms')
@@ -44,31 +47,41 @@ def load_filter_rename_PIcat(self):
     RAerr_arr = np.full(len(PI_cat_filtered), np.nan)
     DEC_arr = np.full(len(PI_cat_filtered), np.nan)
     DECerr_arr = np.full(len(PI_cat_filtered), np.nan)
+
     PI_arr = np.full(len(PI_cat_filtered), np.nan)
     PIerr_arr = np.full(len(PI_cat_filtered), np.nan)
+    PIIsl_arr = np.full(len(PI_cat_filtered), np.nan)
+    PIIslerr_arr = np.full(len(PI_cat_filtered), np.nan)
     PIrms_arr = np.full(len(PI_cat_filtered), np.nan)
     islands = np.unique(PI_cat_filtered['Isl_id'])
     for isl in islands:
-        islidxs = np.where(isl == PI_cat_filtered['Isl_id'])[0]
+        islidxs = np.where(isl == PI_cat_filtered['Isl_id'])[0] # grouping sources by Isl
         if len(islidxs) == 1:
+            # single component case
             RA_arr[islidxs] = PI_cat_filtered['RA_Comp'][islidxs]
             RAerr_arr[islidxs] = PI_cat_filtered['RA_Comp_err'][islidxs]
             DEC_arr[islidxs] = PI_cat_filtered['DEC_Comp'][islidxs]
             DECerr_arr[islidxs] = PI_cat_filtered['DEC_Comp_err'][islidxs]
-            PI_arr[islidxs] = PI_cat_filtered['PI_Comp'][islidxs]
-            PIerr_arr[islidxs] = PI_cat_filtered['PI_Comp_err'][islidxs]
+            PI_arr[islidxs] = PI_cat_filtered['PI_Comp_fit'][islidxs]
+            PIerr_arr[islidxs] = PI_cat_filtered['PI_Comp_fit_err'][islidxs]
+            PIIsl_arr[islidxs] = PI_cat_filtered['PI_Comp_Isl'][islidxs]
+            PIIslerr_arr[islidxs] = PI_cat_filtered['PI_Comp_Isl_err'][islidxs]
             PIrms_arr[islidxs] = PI_cat_filtered['PI_rms'][islidxs]
             # Generate the source name
             src_name = misc.make_source_id(RA_arr[islidxs][0], DEC_arr[islidxs][0], self.prefix)
             source_ids[islidxs] = src_name
         else:
+            # multi component case
             RA_arr[islidxs] = np.mean(PI_cat_filtered['RA_Comp'][islidxs])
             RAerr_arr[islidxs] = list(np.full(len(islidxs), np.sqrt(np.sum(np.square(PI_cat_filtered['RA_Comp_err'][islidxs])))))
             DEC_arr[islidxs] = np.mean(PI_cat_filtered['DEC_Comp'][islidxs])
             DECerr_arr[islidxs] = list(np.full(len(islidxs), np.sqrt(np.sum(np.square(PI_cat_filtered['DEC_Comp_err'][islidxs])))))
-            PI_arr[islidxs] = np.full(len(islidxs), np.sum(PI_cat_filtered['PI_Comp'][islidxs]))
-            PIerr_arr[islidxs] = list(np.full(len(islidxs), np.sqrt(np.sum(np.square(PI_cat_filtered['PI_Comp_err'][islidxs])))))
-            PIrms_arr[islidxs] = np.mean(PI_cat_filtered['PI_rms'][islidxs])
+            PI_arr[islidxs] = np.full(len(islidxs), np.sum(PI_cat_filtered['PI_Comp_fit'][islidxs]))
+            PIerr_arr[islidxs] = list(np.full(len(islidxs), np.sqrt(np.sum(np.square(PI_cat_filtered['PI_Comp_fit_err'][islidxs])))))
+            # Isl flux is always all Comp in Isl
+            PIIsl_arr[islidxs] = np.full(len(islidxs), PI_cat_filtered['PI_Comp_Isl'][islidxs[0]])
+            PIIslerr_arr[islidxs] = list(np.full(len(islidxs), PI_cat_filtered['PI_Comp_Isl_err'][islidxs[0]]))
+            PIrms_arr[islidxs] = PI_cat_filtered['PI_rms'][islidxs[0]]
             # Generate the source name
             src_name = misc.make_source_id(RA_arr[islidxs][0], DEC_arr[islidxs][0], self.prefix)
             source_ids[islidxs] = np.full(len(islidxs), src_name)
@@ -77,15 +90,17 @@ def load_filter_rename_PIcat(self):
             s['S_Code'] = 'E'
         else:
             s['S_Code'] = 'S'
-    PI_cat_filtered['ID'] = source_ids
+    PI_cat_filtered['ID'] = source_ids # assumes one Isl is one source!
     PI_cat_filtered['RA'] = RA_arr
     PI_cat_filtered['RA_err'] = RAerr_arr
     PI_cat_filtered['DEC'] = DEC_arr
     PI_cat_filtered['DEC_err'] = DECerr_arr
-    PI_cat_filtered['PI'] = PI_arr
-    PI_cat_filtered['PI_err'] = PIerr_arr
+    PI_cat_filtered['PI_fit'] = PI_arr # previously PI
+    PI_cat_filtered['PI_fit_err'] = PIerr_arr
+    PI_cat_filtered['PI_Isl'] = PIIsl_arr
+    PI_cat_filtered['PI_Isl_err'] = PIIslerr_arr
     PI_cat_filtered['PI_rms'] = PIrms_arr
-    PI_cat_filtered.remove_column('Isl_id')
+    #PI_cat_filtered.remove_column('Isl_id')
     PI_cat_filtered.remove_column('DC_Maj')
     PI_cat_filtered.remove_column('DC_Min')
     PI_cat_filtered.remove_column('DC_PA')
@@ -100,6 +115,7 @@ def gen_TP_cat(self):
     source_list.export_image(outfile=self.polanalysisdir + '/TP_rms.fits', clobber=True, img_type='rms')
     source_list.export_image(outfile=self.polanalysisdir + '/TP_ch0.fits', clobber=True, img_type='ch0')
     source_list.export_image(outfile=self.polanalysisdir + '/TP_mean.fits', clobber=True, img_type='mean')
+    source_list.export_image(outfile=self.polanalysisdir + '/TP_mask.fits', clobber=True, img_type='island_mask')
     rms_hdu = pyfits.open(self.polanalysisdir + '/TP_rms.fits')[0]
     ch0_hdu = pyfits.open(self.polanalysisdir + '/TP_ch0.fits')[0]
     mean_hdu = pyfits.open(self.polanalysisdir + '/TP_mean.fits')[0]
@@ -115,7 +131,7 @@ def gen_TP_cat(self):
     cat_clean = catalogue.match_and_remove_TP(contimagename, cat, ra, dec)
     catalogue.write_cat_clean_TP(self, cat_clean)
     TP_cat = Table.read(self.polanalysisdir + '/TP_cat_clean.txt', format='ascii')
-    TP_cat_filtered = TP_cat['Isl_id','RA','E_RA','DEC','E_DEC','Total_flux','E_Total_flux','Peak_flux','E_Peak_flux','S_Code']
+    TP_cat_filtered = TP_cat['Isl_id','RA','E_RA','DEC','E_DEC','Total_flux','E_Total_flux','Peak_flux','E_Peak_flux','S_Code','Isl_rms']
     TP_cat_filtered.rename_column('RA', 'RA_Comp_TP')
     TP_cat_filtered.rename_column('E_RA', 'RA_Comp_TP_err')
     TP_cat_filtered.rename_column('DEC', 'DEC_Comp_TP')
@@ -124,6 +140,7 @@ def gen_TP_cat(self):
     TP_cat_filtered.rename_column('E_Total_flux', 'TP_Comp_err')
     TP_cat_filtered.rename_column('Peak_flux', 'TP_Comp_Peak')
     TP_cat_filtered.rename_column('E_Peak_flux', 'TP_Comp_Peak_err')
+    TP_cat_filtered.rename_column('Isl_rms','TP_rms')
     # Correct RA, DEC, fluxes etc. for the sources by combining components
     RA_arr = np.full(len(TP_cat_filtered), np.nan)
     RAerr_arr = np.full(len(TP_cat_filtered), np.nan)
@@ -131,6 +148,7 @@ def gen_TP_cat(self):
     DECerr_arr = np.full(len(TP_cat_filtered), np.nan)
     PI_arr = np.full(len(TP_cat_filtered), np.nan)
     PIerr_arr = np.full(len(TP_cat_filtered), np.nan)
+    TPrms_arr = np.full(len(TP_cat_filtered), np.nan)
     islands = np.unique(TP_cat_filtered['Isl_id'])
     for isl in islands:
         islidxs = np.where(isl == TP_cat_filtered['Isl_id'])[0]
@@ -141,6 +159,7 @@ def gen_TP_cat(self):
             DECerr_arr[islidxs] = TP_cat_filtered['DEC_Comp_TP_err'][islidxs]
             PI_arr[islidxs] = TP_cat_filtered['TP_Comp'][islidxs]
             PIerr_arr[islidxs] = TP_cat_filtered['TP_Comp_err'][islidxs]
+            TPrms_arr[islidxs] = TP_cat_filtered['TP_rms'][islidxs]
         else:
             RA_arr[islidxs] = np.mean(TP_cat_filtered['RA_Comp_TP'][islidxs])
             RAerr_arr[islidxs] = list(np.full(len(islidxs), np.sqrt(np.sum(np.square(TP_cat_filtered['RA_Comp_TP_err'][islidxs])))))
@@ -148,21 +167,23 @@ def gen_TP_cat(self):
             DECerr_arr[islidxs] = list(np.full(len(islidxs), np.sqrt(np.sum(np.square(TP_cat_filtered['DEC_Comp_TP_err'][islidxs])))))
             PI_arr[islidxs] = np.full(len(islidxs), np.sum(TP_cat_filtered['TP_Comp'][islidxs]))
             PIerr_arr[islidxs] = list(np.full(len(islidxs), np.sqrt(np.sum(np.square(TP_cat_filtered['TP_Comp_err'][islidxs])))))
+            TPrms_arr[islidxs] = np.mean(TP_cat_filtered['TP_rms'][islidxs])
     TP_cat_filtered['RA_TP'] = RA_arr
     TP_cat_filtered['RA_TP_err'] = RAerr_arr
     TP_cat_filtered['DEC_TP'] = DEC_arr
     TP_cat_filtered['DEC_TP_err'] = DECerr_arr
     TP_cat_filtered['TP'] = PI_arr
     TP_cat_filtered['TP_err'] = PIerr_arr
+    TP_cat_filtered['TP_rms'] = TPrms_arr
     # Generate source IDs for total power
     TP_ID_arr = np.full(len(TP_cat_filtered), '', dtype='S20')
     for s, source in enumerate(TP_cat_filtered):
         TP_ID_arr[s] = misc.make_source_id(TP_cat_filtered['RA_TP'][s], TP_cat_filtered['DEC_TP'][s], 'TP')
         TP_cat_filtered['TP_ID'] = TP_ID_arr
     TP_cat_filtered.remove_column('Isl_id')
-    new_order = ['TP_ID','RA_TP','RA_TP_err','DEC_TP','DEC_TP_err','TP','TP_err','S_Code','RA_Comp_TP','RA_Comp_TP_err','DEC_Comp_TP','DEC_Comp_TP_err','TP_Comp','TP_Comp_err','TP_Comp_Peak','TP_Comp_Peak_err']
+    new_order = ['TP_ID','RA_TP','RA_TP_err','DEC_TP','DEC_TP_err','TP','TP_err','S_Code','RA_Comp_TP','RA_Comp_TP_err','DEC_Comp_TP','DEC_Comp_TP_err','TP_Comp','TP_Comp_err','TP_Comp_Peak','TP_Comp_Peak_err','TP_rms']
     tp_new_order = TP_cat_filtered[new_order]
-    tp_new_order.write(self.polanalysisdir + '/TP_cat_final.txt', format='ascii')
+    tp_new_order.write(self.polanalysisdir + '/TP_cat_final.txt', format='ascii', overwrite=True)
     return TP_cat_filtered
 
 
@@ -175,8 +196,10 @@ def cross_match_TP(self, PI_cat, TP_cat):
     TP_dec_arr = np.full(len(PI_cat), np.nan)
     TP_ra_err_arr = np.full(len(PI_cat), np.nan)
     TP_dec_err_arr = np.full(len(PI_cat), np.nan)
-    FP_arr = np.full(len(PI_cat), np.nan)
-    FP_err_arr = np.full(len(PI_cat), np.nan)
+    FPfit_arr = np.full(len(PI_cat), np.nan)
+    FPfit_err_arr = np.full(len(PI_cat), np.nan)
+    FPIsl_arr = np.full(len(PI_cat), np.nan)
+    FPIsl_err_arr = np.full(len(PI_cat), np.nan)
     for s, source in enumerate(PI_cat):
         ra_source = source['RA']
         dec_source = source['DEC']
@@ -193,8 +216,11 @@ def cross_match_TP(self, PI_cat, TP_cat):
             TP_ra_err_arr[s] = TP_cat[min_idx]['RA_TP_err']
             TP_dec_arr[s] = TP_cat[min_idx]['DEC_TP']
             TP_dec_err_arr[s] = TP_cat[min_idx]['DEC_TP_err']
-            FP_arr[s] = source['PI']/TP_cat[min_idx]['TP']
-            FP_err_arr[s] = np.sqrt((1.0/TP_cat[min_idx]['TP'])**2.0 * source['PI_err']**2.0 + (source['PI'] / (TP_cat[min_idx]['TP']**2.0)) * TP_cat[min_idx]['TP_err']**2.0)
+            FPfit_arr[s] = source['PI_fit']/TP_cat[min_idx]['TP']
+            FPfit_err_arr[s] = np.sqrt((1.0/TP_cat[min_idx]['TP'])**2.0 * source['PI_fit_err']**2.0 + (source['PI_fit'] / (TP_cat[min_idx]['TP']**2.0)) * TP_cat[min_idx]['TP_err']**2.0)
+            FPIsl_arr[s] = source['PI_Isl'] / TP_cat[min_idx]['TP']
+            FPIsl_err_arr[s] = np.sqrt((1.0 / TP_cat[min_idx]['TP']) ** 2.0 * source['PI_Isl_err'] ** 2.0 + (
+                        source['PI_Isl'] / (TP_cat[min_idx]['TP'] ** 2.0)) * TP_cat[min_idx]['TP_err'] ** 2.0)
         else:
             pass
     PI_cat['TP_ID'] = TP_id_arr
@@ -204,26 +230,37 @@ def cross_match_TP(self, PI_cat, TP_cat):
     PI_cat['RA_TP_err'] = TP_ra_err_arr
     PI_cat['DEC_TP'] = TP_dec_arr
     PI_cat['DEC_TP_err'] = TP_dec_err_arr
-    PI_cat['FP'] = FP_arr
-    PI_cat['FP_err'] = FP_err_arr
+    PI_cat['FP_fit'] = FPfit_arr
+    PI_cat['FP_fit_err'] = FPfit_err_arr
+    PI_cat['FP_Isl'] = FPIsl_arr
+    PI_cat['FP_Isl_err'] = FPIsl_err_arr
     # Combine different polarised sources, which have the same total power counterpart
     for tp_source_ra in np.unique(TP_ra_arr):
         nsources = np.where(TP_ra_arr == tp_source_ra)
         if len(nsources[0]) < 2:
             pass
         else:
-            if len(np.unique(PI_cat['ID'][nsources])) > 1:
+            if len(np.unique(PI_cat['ID'][nsources])) > 1: # check if multi match is with multi Isl
                 for pis in nsources:
                     PI_cat['RA'][pis] = np.mean(PI_cat['RA'][nsources])
                     PI_cat['RA_err'][pis] = np.sqrt(np.sum(np.square(PI_cat['RA_err'][pis])))
                     PI_cat['DEC'][pis] = np.mean(PI_cat['DEC'][nsources])
                     PI_cat['DEC_err'][pis] = np.sqrt(np.sum(np.square(PI_cat['DEC_err'][pis])))
                     PI_cat['ID'][pis] = misc.make_source_id(PI_cat['RA'][pis][0], PI_cat['DEC'][pis][0], self.prefix)
-                    PI_cat['PI'][pis] = np.sum(PI_cat['PI'][nsources])
-                    PI_cat['PI_err'][pis] = np.sqrt(np.sum(np.square(PI_cat['PI_err'][pis])))
+                    PI_cat['PI_fit'][pis] = np.sum(PI_cat['PI_fit'][nsources])
+                    PI_cat['PI_fit_err'][pis] = np.sqrt(np.sum(np.square(PI_cat['PI_fit_err'][nsources])))
+                    un_IDs = np.unique(PI_cat['ID'][nsources])
+                    un_idx = []
+                    for un_ID in un_IDs:
+                        un_idx.append(np.where(PI_cat['ID'] == un_ID)[0])
+                    PI_cat['PI_Isl'][pis] = np.sum(PI_cat['PI_fit'][un_idx])
+                    PI_cat['PI_fit_err'][pis] = np.sqrt(np.sum(np.square(PI_cat['PI_fit_err'][un_idx])))
                     PI_cat['S_Code'][pis] = 'E'
-                    PI_cat['FP'][pis] = PI_cat['PI'][pis] / PI_cat['TP'][pis]
-                    PI_cat['FP_err'][pis] = np.sqrt((1.0 / PI_cat['TP'][nsources]) ** 2.0 * PI_cat['PI_err'][nsources] ** 2.0 + (PI_cat['PI'][nsources] / (PI_cat['TP'][nsources] ** 2.0)) * PI_cat['TP_err'][nsources] ** 2.0)
+                    PI_cat['FP_fit'][pis] = PI_cat['PI_fit'][pis] / PI_cat['TP'][pis]
+                    PI_cat['FP_fit_err'][pis] = np.sqrt((1.0 / PI_cat['TP'][nsources]) ** 2.0 * PI_cat['PI_fit_err'][nsources] ** 2.0 + (PI_cat['PI_fit'][nsources] / (PI_cat['TP'][nsources] ** 2.0)) * PI_cat['TP_err'][nsources] ** 2.0)
+                    PI_cat['FP_Isl'][pis] = PI_cat['PI_Isl'][pis] / PI_cat['TP'][pis]
+                    PI_cat['FP_Isl_err'][pis] = np.sqrt((1.0 / PI_cat['TP'][nsources]) ** 2.0 * PI_cat['PI_Isl_err'][nsources] ** 2.0 + (
+                                    PI_cat['PI_Isl'][nsources] / (PI_cat['TP'][nsources] ** 2.0)) * PI_cat['TP_err'][nsources] ** 2.0)
             else:
                 pass
     return PI_cat
@@ -393,7 +430,8 @@ def cross_match_sdss(self, cat):
             pass
         else:
             match = SDSS.query_region(coord.SkyCoord(source['WISE_RA'], source['WISE_DEC'], unit=(u.deg, u.deg), frame='icrs'), photoobj_fields=['objid','ra','dec','u','err_u','g','err_g','r','err_r','i','err_i','z','err_z','type'], spectro=False, radius=3.2 * u.arcsec, data_release=16)
-            if match != None:
+            #print('TEST',match)
+            if match is not None: #if (len(np.array(match).flatten()) != None): #if match != None:
                 match_gal = match[np.where(match['type'] == 3)]
                 if len(match_gal) != 0:
                     dist = np.sqrt(np.square(match_gal['ra']-source['WISE_RA']) + np.square(match_gal['dec']-source['WISE_DEC']))
@@ -443,7 +481,7 @@ def cross_match_sdss(self, cat):
                     else:
                         sdss_zerr_arr[s] = sdss_src['err_z']
                     match_spec = SDSS.query_region(coord.SkyCoord(source['WISE_RA'], source['WISE_DEC'], unit=(u.deg, u.deg), frame='icrs'), photoobj_fields=['objid'], specobj_fields=['ra','dec','z','zerr'], spectro=True, radius=3.2 * u.arcsec, data_release=16)
-                    if match_spec != None:
+                    if match_spec is not None: #if (len(np.array(match_spec).flatten()) != None): #if match_spec != None:
                         match_spec_crossid = match_spec[np.where(match_spec['objid'] == sdss_src['objid'])]
                         if len(match_spec_crossid) == 0:
                             sdss_rs_arr[s] = np.nan
@@ -513,10 +551,10 @@ def cross_match_sdss(self, cat):
 
 def write_cross_matched_cat(self, cat):
     # Reorder the columns of the catalogue
-    new_order = ['ID','RA','RA_err','DEC','DEC_err','PI','PI_err','S_Code','RA_Comp','RA_Comp_err','DEC_Comp','DEC_Comp_err','PI_Comp','PI_Comp_err','PI_Comp_Peak','PI_Comp_Peak_err','PI_rms','RM_Comp','RM_Comp_err','TP_ID','TP','TP_err','RA_TP','RA_TP_err','DEC_TP','DEC_TP_err','FP','FP_err','NVSS_I','NVSS_I_err','NVSS_PI','NVSS_PI_err','NVSS_FP','NVSS_FP_err','NVSS_RM','NVSS_RM_err','NVSS_RA','NVSS_RA_err','NVSS_DEC','NVSS_DEC_err','WISE_ID','WISE_RA','WISE_RA_err','WISE_DEC','WISE_DEC_err','WISE_Flux_3.4','WISE_Flux_3.4_err','WISE_SNR_3.4','WISE_Flux_4.6','WISE_Flux_4.6_err','WISE_SNR_4.6','WISE_Flux_12','WISE_Flux_12_err','WISE_SNR_12','WISE_Flux_22','WISE_Flux_22_err','WISE_SNR_22','SDSS_ID','SDSS_RA','SDSS_DEC','SDSS_Flux_U','SDSS_Flux_U_err','SDSS_Flux_G','SDSS_Flux_G_err','SDSS_Flux_R','SDSS_Flux_R_err','SDSS_Flux_I','SDSS_Flux_I_err','SDSS_Flux_Z','SDSS_Flux_Z_err','SDSS_z','SDSS_z_err']
+    new_order = ['ID','RA','RA_err','DEC','DEC_err','PI_Isl','PI_Isl_err','PI_fit','PI_fit_err','S_Code','RA_Comp','RA_Comp_err','DEC_Comp','DEC_Comp_err','PI_Comp_Isl','PI_Comp_Isl_err','PI_Comp_fit','PI_Comp_fit_err','PI_Comp_Peak','PI_Comp_Peak_err','PI_rms','Isl_id','RM_Comp','RM_Comp_err','TP_ID','TP','TP_err','RA_TP','RA_TP_err','DEC_TP','DEC_TP_err','FP_Isl','FP_Isl_err','FP_fit','FP_fit_err','NVSS_I','NVSS_I_err','NVSS_PI','NVSS_PI_err','NVSS_FP','NVSS_FP_err','NVSS_RM','NVSS_RM_err','NVSS_RA','NVSS_RA_err','NVSS_DEC','NVSS_DEC_err','WISE_ID','WISE_RA','WISE_RA_err','WISE_DEC','WISE_DEC_err','WISE_Flux_3.4','WISE_Flux_3.4_err','WISE_SNR_3.4','WISE_Flux_4.6','WISE_Flux_4.6_err','WISE_SNR_4.6','WISE_Flux_12','WISE_Flux_12_err','WISE_SNR_12','WISE_Flux_22','WISE_Flux_22_err','WISE_SNR_22','SDSS_ID','SDSS_RA','SDSS_DEC','SDSS_Flux_U','SDSS_Flux_U_err','SDSS_Flux_G','SDSS_Flux_G_err','SDSS_Flux_R','SDSS_Flux_R_err','SDSS_Flux_I','SDSS_Flux_I_err','SDSS_Flux_Z','SDSS_Flux_Z_err','SDSS_z','SDSS_z_err']
     t_new_order = cat[new_order]
     # Write out the catalogue
-    t_new_order.write(self.polanalysisdir + '/PI_cat_cm.txt', format='ascii')
+    t_new_order.write(self.polanalysisdir + '/PI_cat_cm.txt', format='ascii', overwrite=True)
     # Remove the old header
     with open(self.polanalysisdir + '/PI_cat_cm.txt', 'r') as fin:
         data = fin.read().splitlines(True)

@@ -14,12 +14,15 @@ def rmanalysis(self):
     Runs the analysis of the Faraday cubes and generates PI, RM, PA, and PA0 images as well as their error images
     """
     FD_P_data, FD_Q_data, FD_U_data = load_cubes(self)
-    PI_arr, RM_arr, PA_arr, PA0_arr = calc_maps(self, FD_P_data, FD_Q_data, FD_U_data)
+    PI_arr, PI_eff_arr, dPI_arr, RM_arr, PA_arr, PA0_arr = calc_maps(self, FD_P_data, FD_Q_data, FD_U_data)
+    print('maps calculates')
 #    rmsynth.calc_med_image(self)
 #    PI_bias_corr = sub_bias(self, PI_arr)
-    write_maps(self, PI_arr, RM_arr, PA_arr, PA0_arr)
+    write_maps(self, PI_arr, PI_eff_arr, dPI_arr, RM_arr, PA_arr, PA0_arr)
+    print('maps written')
     PI_err, RM_err, PA_err = calc_error_maps(self, PI_arr)
     write_error_maps(self, PI_err, RM_err, PA_err)
+    print('wrote error maps')
     calc_FP(self)
 #    FD_P_data_uncorr, FD_Q_data_uncorr, FD_U_data_uncorr = load_cubes_uncorr(self)
 #    PI_arr_uncorr, RM_arr_uncorr, PA_arr_uncorr, PA0_arr_uncorr = calc_maps(self, FD_P_data_uncorr, FD_Q_data_uncorr, FD_U_data_uncorr)
@@ -67,10 +70,19 @@ def calc_maps(self, FD_P_data, FD_Q_data, FD_U_data):
     zlen = FD_P_data.shape[-3]
 
     PI_arr = np.nan * np.zeros((ylen, xlen), dtype=np.float32)
+    dPI_arr = np.nan * np.zeros((ylen, xlen), dtype=np.float32)
+    PI_eff_arr = np.nan * np.zeros((ylen, xlen), dtype=np.float32)
     RM_arr = np.nan * np.zeros((ylen, xlen), dtype=np.float32)
     RM_index = np.nan * np.zeros((ylen, xlen), dtype=np.float32)
     Q_arr = np.nan * np.zeros((ylen, xlen), dtype=np.float32)
     U_arr = np.nan * np.zeros((ylen, xlen), dtype=np.float32)
+
+    # calculate the FWHM of the RMTF for blanking
+    freq, chanwidth = util.get_freqs_chanwidth(self)
+    fwhmRMTF, max_scale, max_FD, lam2, lam02 = util.calc_rmsynth_params(freq, chanwidth)
+    print('fwhm in rad/m^2 ',fwhmRMTF)
+    width = np.ceil(fwhmRMTF / self.fd_dphi)
+    print('fwhm in channel', width)
 
     for x in range(xlen):
         for y in range(ylen):
@@ -107,12 +119,35 @@ def calc_maps(self, FD_P_data, FD_Q_data, FD_U_data):
                 except (ValueError, IndexError):
                     Q_arr[y,x] = np.nan
                     U_arr[y,x] = np.nan
+
+                # calculate dPI as the MED from the median of the FDF
+                # exclude 2 FWHM from the peak left and right
+                iL = int(max(0, ind - 2*width))
+                iR = int(min(zlen, ind + 2*width))
+                FD_values_masked = FD_values.copy()
+                FD_values_masked[iL:iR] = np.nan
+                FD_values_masked = FD_values_masked[np.where(FD_values_masked == FD_values_masked)]
+                #calculate the actual MED
+                if float(len(FD_values_masked)/len(FD_values)) <0.3:
+                    MED = util.calc_MED(FD_values)
+                    #dPI_arr[y,x] = util.calc_MED(FD_values)
+                else:
+                    MED = util.calc_MED(FD_values_masked)
+                dPI_arr[y,x] = MED
+
+                # calculte PI_map with only peal values above 8 sigma:
+                SNR = PI / MED
+                if SNR >= 8:
+                    PI_eff = np.sqrt(np.square(PI) - 2.3 * np.square(MED))
+                else:
+                    PI_eff = np.nan
+                PI_eff_arr[y,x] = PI_eff
     RM_arr = -1.0 * RM_arr
     PA_arr = np.degrees(0.5 * np.arctan2(U_arr, Q_arr))
     freqs, chanwidth = util.get_freqs_chanwidth(self)
     width, max_scale, max_FD, lam2, lam02 = util.calc_rmsynth_params(freqs, chanwidth)
     PA0_arr = PA_arr - np.degrees(RM_arr * lam02)
-    return PI_arr, RM_arr, PA_arr, PA0_arr
+    return PI_arr, PI_eff_arr, dPI_arr, RM_arr, PA_arr, PA0_arr
 
 
 def sub_bias(self, PI_arr):
@@ -124,7 +159,7 @@ def sub_bias(self, PI_arr):
     print('To be done...')
 
 
-def write_maps(self, PI_arr, RM_arr, PA_arr, PA0_arr):
+def write_maps(self, PI_arr, PI_eff_arr, dPI_arr, RM_arr, PA_arr, PA0_arr):
     """
     Writes out the 2D arrays for PI, RM, PA and PA0 as FITS-files
     PI_arr(np.array): PI array as np-array
@@ -149,6 +184,14 @@ def write_maps(self, PI_arr, RM_arr, PA_arr, PA0_arr):
     # Write the PI map
     header['BUNIT'] = 'Jy beam-1'
     pyfits.writeto(self.polanalysisdir + '/PI.fits', data=PI_arr, header=header, overwrite=True)
+
+    # Write the PI_eff map
+    header['BUNIT'] = 'Jy beam-1'
+    pyfits.writeto(self.polanalysisdir + '/PI_eff.fits', data=PI_eff_arr, header=header, overwrite=True)
+
+    # Write the dPI map
+    header['BUNIT'] = 'Jy beam-1'
+    pyfits.writeto(self.polanalysisdir + '/PI_MED.fits', data=dPI_arr, header=header, overwrite=True)
 
     # Write the PA map
     header['BUNIT'] = 'deg'

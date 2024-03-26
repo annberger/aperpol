@@ -23,6 +23,7 @@ def rmsynth(self):
 	print('Maximum observable scale in Faraday space is ' + str(max_scale) + ' rad/m^2')
 	print('Maximum observable Faraday Depth is ' + str(max_FD) + ' rad/m^2')
 	write_FDcubes(self, FD_cube, RMTF, phi_array)
+	write_FD_RMS_images(self)
 	# Generate the non-primary beam corrected Faraday cubes
 #	print('Generating Faraday cubes of non-primary beam corrected data')
 #	Qdata_uncorr, Udata_uncorr, freq_uncorr, chanwidth_uncorr = read_cubes_uncorr(self)
@@ -198,6 +199,54 @@ def write_FDcubes(self, FDcube, RMTF, phi_array):
 	RMTF_text[2,:] = np.imag(RMTF)
 	RMTF_text[3,:] = np.absolute(RMTF)
 	np.savetxt(self.polanalysisdir + '/RMTF.txt', np.rot90(RMTF_text))
+
+
+def write_FD_RMS_images(self):
+	"""
+	Calculates the RMS along the Faraday Q-, U- and PI-cubes
+	FDcube(array): Calculated Faraday cube
+	"""
+	qcube = pyfits.open(self.polanalysisdir + '/FD_Q.fits')
+	qhdu = qcube[0]
+	qhdr = qhdu.header
+	qhdr['NAXIS'] = 2
+	del qhdr['NAXIS3']
+	del qhdr['CRVAL3']
+	del qhdr['CDELT3']
+	del qhdr['CRPIX3']
+	qdata = qhdu.data
+	q_rms = np.std(qdata, axis=0)
+	pyfits.writeto(self.polanalysisdir + '/FD_Q_RMS.fits', data=q_rms, header=qhdr, overwrite=True)
+
+	ucube = pyfits.open(self.polanalysisdir + '/FD_U.fits')
+	uhdu = ucube[0]
+	uhdr = uhdu.header
+	uhdr['NAXIS'] = 2
+	del uhdr['NAXIS3']
+	del uhdr['CRVAL3']
+	del uhdr['CDELT3']
+	del uhdr['CRPIX3']
+	udata = uhdu.data
+	u_rms = np.std(udata, axis=0)
+	pyfits.writeto(self.polanalysisdir + '/FD_U_RMS.fits', data=u_rms, header=uhdr, overwrite=True)
+
+	pcube = pyfits.open(self.polanalysisdir + '/FD_P.fits')
+	phdu = pcube[0]
+	phdr = phdu.header
+	phdr['NAXIS'] = 2
+	del phdr['NAXIS3']
+	del phdr['CRVAL3']
+	del phdr['CDELT3']
+	del phdr['CRPIX3']
+	pdata = np.abs(phdu.data)
+	p_rms = np.std(pdata, axis=0)
+	# calculate the MED
+	# c is the constant from MED to std
+	c = 0.6745
+	d = np.median(pdata, axis = 0)
+	p_med = np.median(np.fabs(pdata - d) / c, axis = 0)
+	pyfits.writeto(self.polanalysisdir + '/FD_P_RMS.fits', data=p_rms, header=phdr, overwrite=True)
+	pyfits.writeto(self.polanalysisdir + '/FD_P_MED.fits', data=p_med, header=phdr, overwrite=True)
 
 
 def write_FDcubes_uncorr(self, FDcube, RMTF, phi_array):

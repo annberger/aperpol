@@ -5,8 +5,8 @@ import catalogue
 import cross_id
 import make_ancillary
 import make_plots
-import interactive
-import leakage
+#import interactive
+#import leakage
 
 
 class polarisation_analysis:
@@ -26,12 +26,12 @@ class polarisation_analysis:
         """
         Function to analyse the Apertif polarisation data of a single mosaic in Stokes Q and U
         """
-        util.gen_dirs(self)
-        rmsynth.rmsynth(self)
-        rmanalysis.rmanalysis(self)
-        catalogue.catalogue(self)
-        cross_id.cross_id(self)
-        make_ancillary.make_ancillary(self)
+#        util.gen_dirs(self)
+#        rmsynth.rmsynth(self)
+#        rmanalysis.rmanalysis(self)
+#        catalogue.catalogue(self)
+#        cross_id.cross_id(self)
+#        make_ancillary.make_ancillary(self)
         make_plots.make_plots(self)
 
 

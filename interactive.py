@@ -11,7 +11,7 @@ from astropy.coordinates import SkyCoord
 
 import misc
 import util
-import make_plots
+import make_plots_thesis as make_plots
 
 
 def load_catalogue_PI(self):
@@ -67,13 +67,13 @@ def load_catalogues_interactive(self):
     TP_cat = Table.read(self.polanalysisdir + '/TP_cat_final_interactive.txt', format='ascii')
     return TP_cat, PI_cat
 
-
-def combine_PI(self, sourceids, tpcat, picat):
+def combine_PI(self, sourceids, tpcat, picat, picat_final):
     """
     Interactive function to combine two polarised sources into one and search for the total power, WISE and SDSS counterpart at the new central position
     sourceids (list of strings): Source ids to combine
     tpcat(astropy table): Total power source catalogue
     picat(astropy table): Polarised source catalogue
+    picat_final (astropy table): Untouched Polarised source catalogue
     returns(astropy tables): Updated total power and polarised source catalogues
     """
     com_idxs = []
@@ -84,16 +84,42 @@ def combine_PI(self, sourceids, tpcat, picat):
     picat['RA_err'][idxs_arr] = np.sqrt(np.sum(np.square(picat['RA_Comp_err'][idxs_arr])))
     picat['DEC'][idxs_arr] = np.mean(picat['DEC_Comp'][idxs_arr])
     picat['DEC_err'][idxs_arr] = np.sqrt(np.sum(np.square(picat['DEC_Comp_err'][idxs_arr])))
-    picat['PI'][idxs_arr] = np.sum(picat['PI_Comp'][idxs_arr])
-    picat['PI_err'][idxs_arr] = np.sqrt(np.sum(np.square(picat['PI_Comp_err'][idxs_arr])))
-    picat['PI_rms'][idxs_arr] = np.mean(picat['PI_rms'][idxs_arr])
-    picat['S_Code'][idxs_arr] = 'E'
+    picat['PI_fit'][idxs_arr] = np.sum(picat['PI_Comp_fit'][idxs_arr])
+    picat['PI_fit_err'][idxs_arr] = np.sqrt(np.sum(np.square(picat['PI_Comp_fit_err'][idxs_arr])))
+    # check if components are same Isl_id
+    Isl_un, Isl_count = np.unique(picat[idxs_arr]['Isl_id'], return_counts=True)
+    Isl_un_idx = []
+    for i in range(len(Isl_un)):
+        Isl_un_idx.append(np.where(picat['Isl_id'] == Isl_un[i])[0][0])
+    picat['PI_Isl'][idxs_arr] = np.sum(picat['PI_Comp_Isl'][Isl_un_idx])
+    picat['PI_Isl_err'][idxs_arr] = np.sqrt(np.sum(np.square(picat['PI_Comp_Isl_err'][Isl_un_idx])))
+    picat['PI_rms'][idxs_arr] = np.mean(picat['PI_rms'][Isl_un_idx])
+    flag = 0
+    if 'F' in picat[idxs_arr]['S_Code']:
+        for i in range(len(Isl_un)):
+            # compare number of components in Isl mit components in Isl in original catalogue
+            Isl_idx_fin = np.where(picat_final[picat_final['Isl_id'] == Isl_un[i]])[0]
+            Isl_idx = np.where(picat[idxs_arr][picat[idxs_arr]['Isl_id'] == Isl_un[i]])[0]
+            if len(Isl_idx_fin) == len(Isl_idx):
+                pass
+            elif len(Isl_idx_fin) > len(Isl_idx):
+                flag = 1
+    if flag == 1:
+        picat['S_Code'][idxs_arr] = 'F'
+    elif flag == 0:
+        picat['S_Code'][idxs_arr] = 'E'
     src_name = misc.make_source_id(picat['RA'][idxs_arr][0], picat['DEC'][idxs_arr][0], self.prefix)
     picat['ID'][idxs_arr] = src_name
     print('New Source ID from combination of ' + ' and '.join(sourceids) + ' is: ' + src_name)
     # check for new total power counterpart
-    ra, dec, pi, pi_err = picat['RA'][idxs_arr][0], picat['DEC'][idxs_arr][0], picat['PI'][idxs_arr][0], picat['PI_err'][idxs_arr][0]
-    picat['TP_ID'][idxs_arr], picat['TP'][idxs_arr], picat['TP_err'][idxs_arr], picat['RA_TP'][idxs_arr], picat['RA_TP_err'][idxs_arr], picat['DEC_TP'][idxs_arr], picat['DEC_TP_err'][idxs_arr], picat['FP'][idxs_arr], picat['FP_err'][idxs_arr] = check_TP(self, tpcat, ra, dec, pi, pi_err)
+    #ra, dec, pi, pi_err = picat['RA'][idxs_arr][0], picat['DEC'][idxs_arr][0], picat['PI'][idxs_arr][0], picat['PI_err'][idxs_arr][0]
+    ra = picat['RA'][idxs_arr][0]
+    dec = picat['DEC'][idxs_arr][0]
+    pi_fit = picat['PI_fit'][idxs_arr][0]
+    pi_fit_err = picat['PI_fit_err'][idxs_arr][0]
+    pi_isl = picat['PI_Isl'][idxs_arr][0]
+    pi_isl_err = picat['PI_Isl_err'][idxs_arr][0]
+    picat['TP_ID'][idxs_arr], picat['TP'][idxs_arr], picat['TP_err'][idxs_arr], picat['RA_TP'][idxs_arr], picat['RA_TP_err'][idxs_arr], picat['DEC_TP'][idxs_arr], picat['DEC_TP_err'][idxs_arr], picat['FP_fit'][idxs_arr], picat['FP_fit_err'][idxs_arr], picat['FP_Isl'][idxs_arr], picat['FP_Isl_err'][idxs_arr] = check_TP(self, tpcat, ra, dec, pi_fit, pi_fit_err, pi_isl, pi_isl_err)
     ra_tp, dec_tp = picat['RA_TP'][idxs_arr][0], picat['DEC_TP'][idxs_arr][0]
     # check for new wise counterpart
     picat['WISE_ID'][idxs_arr], picat['WISE_RA'][idxs_arr], picat['WISE_RA_err'][idxs_arr], picat['WISE_DEC'][idxs_arr], picat['WISE_DEC_err'][idxs_arr], picat['WISE_Flux_3.4'][idxs_arr], picat['WISE_Flux_3.4_err'][idxs_arr], picat['WISE_SNR_3.4'][idxs_arr], picat['WISE_Flux_4.6'][idxs_arr], picat['WISE_Flux_4.6_err'][idxs_arr], picat['WISE_SNR_4.6'][idxs_arr], picat['WISE_Flux_12'][idxs_arr], picat['WISE_Flux_12_err'][idxs_arr], picat['WISE_SNR_12'][idxs_arr], picat['WISE_Flux_22'][idxs_arr], picat['WISE_Flux_22_err'][idxs_arr], picat['WISE_SNR_22'][idxs_arr] = check_wise(self, ra_tp, dec_tp)
@@ -141,8 +167,11 @@ def combine_TP(self, tpids, piid, tpcat, picat, ra_hms=None, dec_hms=None):
     picat['RA_TP_err'][pi_idxs] =  tpcat['RA_TP_err'][idxs_arr][0]
     picat['DEC_TP'][pi_idxs] = tpcat['DEC_TP'][idxs_arr][0]
     picat['DEC_TP_err'][pi_idxs] = tpcat['DEC_TP_err'][idxs_arr][0]
-    picat['FP'][pi_idxs] = picat['PI'][pi_idxs][0] / tpcat['TP'][idxs_arr][0]
-    picat['FP_err'][pi_idxs] = np.sqrt((1.0/tpcat['TP'][idxs_arr][0])**2.0 * picat['PI_err'][pi_idxs][0]**2.0 + (picat['PI'][pi_idxs][0] / (tpcat['TP'][idxs_arr][0]**2.0)) * tpcat['TP_err'][idxs_arr][0]**2.0)
+    picat['FP_fit'][pi_idxs] = picat['PI_fit'][pi_idxs][0] / tpcat['TP'][idxs_arr][0]
+    picat['FP_fit_err'][pi_idxs] = np.sqrt((1.0/tpcat['TP'][idxs_arr][0])**2.0 * picat['PI_fit_err'][pi_idxs][0]**2.0 + (picat['PI_fit'][pi_idxs][0] / (tpcat['TP'][idxs_arr][0]**2.0)) * tpcat['TP_err'][idxs_arr][0]**2.0)
+    picat['FP_Isl'][pi_idxs] = picat['PI_Isl'][pi_idxs][0] / tpcat['TP'][idxs_arr][0]
+    picat['FP_Isl_err'][pi_idxs] = np.sqrt((1.0 / tpcat['TP'][idxs_arr][0]) ** 2.0 * picat['PI_Isl_err'][pi_idxs][0] ** 2.0 + (
+                picat['PI_Isl'][pi_idxs][0] / (tpcat['TP'][idxs_arr][0] ** 2.0)) * tpcat['TP_err'][idxs_arr][0] ** 2.0)
     print('Total power sources ' + ' and '.join(tpids) + ' combined to ' + src_name + ' and connected to PI source ' + piid + '!')
     # Check for new WISE and SDSS counterparts
     if ra_hms == None and dec_hms == None:
@@ -158,6 +187,7 @@ def combine_TP(self, tpids, piid, tpcat, picat, ra_hms=None, dec_hms=None):
 
 
 def combine_PI_TP(self, sourceids, tpcat, picat):
+    # no idea what this function does it is not adjusted to new Catalogue style PI_fit PI_Isl!
     """
     Interactive function to combine two total power counterparts into one and search for the WISE and SDSS counterpart at the new central position of the two total power counterparts
     sourceids (list of strings): Total power source ids to combine (start with "TP_")
@@ -240,8 +270,10 @@ def combine_TP_nocrossmatch(self, isl_ids, tpcat, picat):
         picat['RA_TP_err'][tp_idx] = np.nan
         picat['DEC_TP'][tp_idx] = np.nan
         picat['DEC_TP_err'][tp_idx] = np.nan
-        picat['FP'][tp_idx] = np.nan
-        picat['FP_err'][tp_idx] = np.nan
+        picat['FP_fit'][tp_idx] = np.nan
+        picat['FP_fit_err'][tp_idx] = np.nan
+        picat['FP_Isl'][tp_idx] = np.nan
+        picat['FP_Isl_err'][tp_idx] = np.nan
         picat['WISE_ID'][tp_idx] = np.nan
         picat['WISE_RA'][tp_idx] = np.nan
         picat['WISE_RA_err'][tp_idx] = np.nan
@@ -291,16 +323,29 @@ def split_PI(self, sourceid, tpcat, picat):
     picat['RA_err'][split_idxs] = picat['RA_Comp_err'][split_idxs]
     picat['DEC'][split_idxs] = picat['DEC_Comp'][split_idxs]
     picat['DEC_err'][split_idxs] = picat['DEC_Comp_err'][split_idxs]
-    picat['PI'][split_idxs] = picat['PI_Comp'][split_idxs]
-    picat['PI_err'][split_idxs] = picat['PI_Comp_err'][split_idxs]
+    picat['PI_fit'][split_idxs] = picat['PI_Comp_fit'][split_idxs]
+    picat['PI_fit_err'][split_idxs] = picat['PI_Comp_fit_err'][split_idxs]
+    picat['PI_Isl'][split_idxs] = picat['PI_Comp_Isl'][split_idxs]
+    print(picat['PI_fit'][split_idxs])
+    picat['PI_Isl_err'][split_idxs] = picat['PI_Comp_Isl_err'][split_idxs]
     picat['PI_rms'][split_idxs] = picat['PI_rms'][split_idxs]
-    picat['S_Code'][split_idxs] = 'S'
+    # check if Isl has multi components and flag sources where Isl was spit up.
+    Isl_un, Isl_count = np.unique(picat[split_idxs]['Isl_id'], return_counts=True)
+    for i in range(len(Isl_un)):
+        if Isl_count[i] > 1:
+            Isl_idxs = np.where(picat['Isl_id'] == Isl_un[i])
+            picat['S_Code'][Isl_idxs] = 'F'
+        else:
+            # check if Isl was already split up before based on S_Code!
+            Isl_idxs = np.where(picat['Isl_id'] == Isl_un[i])
+            if picat['S_Code'][Isl_idxs] != 'F':
+                picat['S_Code'][Isl_idxs] = 'S'
     print('Splitting source ' + sourceid + '!')
     for s in split_idxs[0]:
         src_name = misc.make_source_id(picat['RA'][s], picat['DEC'][s], self.prefix)
         picat['ID'][s] = src_name
         print('New source ID ' + src_name + ' generated!')
-        picat['TP_ID'][s], picat['TP'][s], picat['TP_err'][s], picat['RA_TP'][s], picat['RA_TP_err'][s], picat['DEC_TP'][s], picat['DEC_TP_err'][s], picat['FP'][s], picat['FP_err'][s] = check_TP(self, tpcat, picat['RA'][s], picat['DEC'][s], picat['PI'][s], picat['PI_err'][s])
+        picat['TP_ID'][s], picat['TP'][s], picat['TP_err'][s], picat['RA_TP'][s], picat['RA_TP_err'][s], picat['DEC_TP'][s], picat['DEC_TP_err'][s], picat['FP_fit'][s], picat['FP_fit_err'][s], picat['FP_Isl'][s], picat['FP_Isl_err'][s] = check_TP(self, tpcat, picat['RA'][s], picat['DEC'][s], picat['PI_fit'][s], picat['PI_fit_err'][s], picat['PI_Isl'][s], picat['PI_Isl_err'][s])
         picat['WISE_ID'][s], picat['WISE_RA'][s], picat['WISE_RA_err'][s], picat['WISE_DEC'][s], picat['WISE_DEC_err'][s], picat['WISE_Flux_3.4'][s], picat['WISE_Flux_3.4_err'][s], picat['WISE_SNR_3.4'][s], picat['WISE_Flux_4.6'][s], picat['WISE_Flux_4.6_err'][s], picat['WISE_SNR_4.6'][s], picat['WISE_Flux_12'][s], picat['WISE_Flux_12_err'][s], picat['WISE_SNR_12'][s], picat['WISE_Flux_22'][s], picat['WISE_Flux_22_err'][s], picat['WISE_SNR_22'][s] = check_wise(self, picat['RA_TP'][s], picat['DEC_TP'][s])
         picat['SDSS_ID'][s], picat['SDSS_RA'][s], picat['SDSS_DEC'][s], picat['SDSS_Flux_U'][s], picat['SDSS_Flux_U_err'][s], picat['SDSS_Flux_G'][s], picat['SDSS_Flux_G_err'][s], picat['SDSS_Flux_R'][s], picat['SDSS_Flux_R_err'][s], picat['SDSS_Flux_I'][s], picat['SDSS_Flux_I_err'][s], picat['SDSS_Flux_Z'][s], picat['SDSS_Flux_Z_err'][s], picat['SDSS_z'][s], picat['SDSS_z_err'][s] = check_sdss(self, picat['WISE_RA'][s], picat['WISE_DEC'][s])
     return tpcat, picat
@@ -331,7 +376,7 @@ def split_TP(self, isl_id, tpcat, picat):
     chk_idxs = np.where(picat['TP_ID'] == isl_id)
     for p in chk_idxs[0]:
         # check for new total power counterpart
-        picat['TP_ID'][p], picat['TP'][p], picat['TP_err'][p], picat['RA_TP'][p], picat['RA_TP_err'][p], picat['DEC_TP'][p], picat['DEC_TP_err'][p], picat['FP'][p], picat['FP_err'][p] = check_TP(self, tpcat, picat['RA'][p], picat['DEC'][p], picat['PI'][p], picat['PI_err'][p])
+        picat['TP_ID'][p], picat['TP'][p], picat['TP_err'][p], picat['RA_TP'][p], picat['RA_TP_err'][p], picat['DEC_TP'][p], picat['DEC_TP_err'][p], picat['FP_fit'][p], picat['FP_fit_err'][p], picat['FP_Isl'][p], picat['FP_Isl_err'][p] = check_TP(self, tpcat, picat['RA'][p], picat['DEC'][p], picat['PI_fit'][p], picat['PI_fit_err'][p], picat['PI_Isl'][p], picat['PI_Isl_err'][p])
         # check for new WISE counterpart
         picat['WISE_ID'][p], picat['WISE_RA'][p], picat['WISE_RA_err'][p], picat['WISE_DEC'][p], picat['WISE_DEC_err'][p], picat['WISE_Flux_3.4'][p], picat['WISE_Flux_3.4_err'][p], picat['WISE_SNR_3.4'][p], picat['WISE_Flux_4.6'][p], picat['WISE_Flux_4.6_err'][p], picat['WISE_SNR_4.6'][p], picat['WISE_Flux_12'][p], picat['WISE_Flux_12_err'][p], picat['WISE_SNR_12'][p], picat['WISE_Flux_22'][p], picat['WISE_Flux_22_err'][p], picat['WISE_SNR_22'][p] = check_wise(self, picat['RA_TP'][p], picat['DEC_TP'][p])
         # check for new SDSS counterpart
@@ -358,9 +403,15 @@ def crossmatch_TP(self, sourceid, ra_hms, dec_hms, tpcat, picat):
         cd = SkyCoord(ra_hms, dec_hms)
         ra_deg = cd.ra.deg
         dec_deg = cd.dec.deg
-        ra, dec, pi, pi_err = ra_deg, dec_deg, picat['PI'][chk_idxs][0], picat['PI_err'][chk_idxs][0]
+        ra = ra_deg
+        dec = dec_deg
+        pi_fit = picat['PI_fit'][chk_idxs][0]
+        pi_fit_err = picat['PI_fit_err'][chk_idxs][0]
+        pi_isl = picat['PI_Isl'][chk_idxs][0]
+        pi_isl_err = picat['PI_Isl_err'][chk_idxs][0]
+        #ra, dec, pi, pi_err = ra_deg, dec_deg, picat['PI'][chk_idxs][0], picat['PI_err'][chk_idxs][0]
         # check for new total power counterpart
-        picat['TP_ID'][chk_idxs], picat['TP'][chk_idxs], picat['TP_err'][chk_idxs], picat['RA_TP'][chk_idxs], picat['RA_TP_err'][chk_idxs], picat['DEC_TP'][chk_idxs], picat['DEC_TP_err'][chk_idxs], picat['FP'][chk_idxs], picat['FP_err'][chk_idxs] = check_TP(self, tpcat, ra, dec, pi, pi_err)
+        picat['TP_ID'][chk_idxs], picat['TP'][chk_idxs], picat['TP_err'][chk_idxs], picat['RA_TP'][chk_idxs], picat['RA_TP_err'][chk_idxs], picat['DEC_TP'][chk_idxs], picat['DEC_TP_err'][chk_idxs], picat['FP_fit'][chk_idxs], picat['FP_fit_err'][chk_idxs], picat['FP_Isl'][chk_idxs], picat['FP_Isl_err'][chk_idxs] = check_TP(self, tpcat, ra, dec, pi_fit, pi_fit_err, pi_isl, pi_isl_err)
         ra_tp, dec_tp = picat['RA_TP'][chk_idxs][0], picat['DEC_TP'][chk_idxs][0]
         # check for new wise counterpart
         picat['WISE_ID'][chk_idxs], picat['WISE_RA'][chk_idxs], picat['WISE_RA_err'][chk_idxs], picat['WISE_DEC'][chk_idxs], picat['WISE_DEC_err'][chk_idxs], picat['WISE_Flux_3.4'][chk_idxs], picat['WISE_Flux_3.4_err'][chk_idxs], picat['WISE_SNR_3.4'][chk_idxs], picat['WISE_Flux_4.6'][chk_idxs], picat['WISE_Flux_4.6_err'][chk_idxs], picat['WISE_SNR_4.6'][chk_idxs], picat['WISE_Flux_12'][chk_idxs], picat['WISE_Flux_12_err'][chk_idxs], picat['WISE_SNR_12'][chk_idxs], picat['WISE_Flux_22'][chk_idxs], picat['WISE_Flux_22_err'][chk_idxs], picat['WISE_SNR_22'][chk_idxs] = check_wise(self, ra_tp, dec_tp)
@@ -567,6 +618,17 @@ def change_scode_C(self, sourceid, tpcat, picat):
     picat['S_Code'][spos] = 'C'
     return tpcat, picat
 
+def change_scode_Isl(self, sourceid, tpcat, picat):
+    """
+    Interactive function to change the S-Code of a source
+    sourceid (string): Source id to edit
+    tpcat(astropy table): Total power source catalogue
+    picat(astropy table): Polarised source catalogue
+    returns(astropy tables): Updated total power and polarised source catalogues
+    """
+    spos = np.where(picat['ID'] == sourceid)
+    picat['S_Code'][spos] = 'F'
+    return tpcat, picat
 
 def write_interactive_catalogues(self, tpcat, picat):
     """
@@ -574,8 +636,8 @@ def write_interactive_catalogues(self, tpcat, picat):
     tpcat(astropy table): Total power source catalogue
     picat(astropy table): Polarised source catalogue
     """
-    tpcat.write(self.polanalysisdir + '/TP_cat_final_interactive.txt', format='ascii')
-    picat.write(self.polanalysisdir + '/PI_cat_final_interactive.txt', format='ascii')
+    tpcat.write(self.polanalysisdir + '/TP_cat_final_interactive.txt', format='ascii', overwrite=True)
+    picat.write(self.polanalysisdir + '/PI_cat_final_interactive.txt', format='ascii', overwrite=True)
 
 
 def redo_single_plot(self, source_id, interactive):
@@ -611,8 +673,7 @@ def final_plots(self):
 ##### Helper funtions #####
 ###########################
 
-
-def check_TP(self, tpcat, ra, dec, pi, pi_err):
+def check_TP(self, tpcat, ra, dec, pi_fit, pi_fit_err, pi_isl, pi_isl_err):
     dist_arr = np.sqrt(np.square(tpcat['RA_TP']-ra) + np.square(tpcat['DEC_TP']-dec))
     min_idx = np.argmin(np.abs(dist_arr))
     # Calculate maximum distance for a match
@@ -626,8 +687,10 @@ def check_TP(self, tpcat, ra, dec, pi, pi_err):
         TP_ra_err = tpcat[min_idx]['RA_TP_err']
         TP_dec = tpcat[min_idx]['DEC_TP']
         TP_dec_err = tpcat[min_idx]['DEC_TP_err']
-        FP = pi/TP
-        FP_err = np.sqrt((1.0/TP)**2.0 * pi_err**2.0 + (pi / (TP**2.0)) * TP_err**2.0)
+        FP_fit = pi_fit/TP
+        FP_fit_err = np.sqrt((1.0/TP)**2.0 * pi_fit_err**2.0 + (pi_fit / (TP**2.0)) * TP_err**2.0)
+        FP_Isl = pi_isl / TP
+        FP_Isl_err = np.sqrt((1.0 / TP) ** 2.0 * pi_isl_err ** 2.0 + (pi_isl / (TP ** 2.0)) * TP_err ** 2.0)
         print('Found total power counterpart at RA=' + str(np.around(TP_ra, decimals=3)) + ' deg and DEC=' + str(np.around(TP_dec, decimals=3)) + ' deg!')
     else:
         TP_id = np.nan
@@ -637,10 +700,12 @@ def check_TP(self, tpcat, ra, dec, pi, pi_err):
         TP_ra_err = np.nan
         TP_dec = np.nan
         TP_dec_err = np.nan
-        FP = np.nan
-        FP_err = np.nan
+        FP_fit = np.nan
+        FP_fit_err = np.nan
+        FP_Isl = np.nan
+        FP_Isl_err = np.nan
         print('No total power counterpart found at new coordinates!')
-    return TP_id, TP, TP_err, TP_ra, TP_ra_err, TP_dec, TP_dec_err, FP, FP_err
+    return TP_id, TP, TP_err, TP_ra, TP_ra_err, TP_dec, TP_dec_err, FP_fit, FP_fit_err, FP_Isl, FP_Isl_err
 
 
 def check_wise(self, ra, dec):
@@ -730,7 +795,8 @@ def check_sdss(self, ra, dec):
         print('No SDSS counterpart found!')
     else:
         match = SDSS.query_region(coord.SkyCoord(ra, dec, unit=(u.deg, u.deg), frame='icrs'), photoobj_fields=['objid', 'ra', 'dec', 'u', 'err_u', 'g', 'err_g', 'r', 'err_r', 'i', 'err_i', 'z', 'err_z', 'type'], spectro=False, radius=3.2 * u.arcsec, data_release=16)
-        if match != None:
+        if match is not None:
+            #print(match)
             match_gal = match[np.where(match['type'] == 3)]
             if len(match_gal) != 0:
                 dist = np.sqrt(np.square(match_gal['ra']-ra) + np.square(match_gal['dec']-dec))
@@ -751,7 +817,7 @@ def check_sdss(self, ra, dec):
                 sdss_zerr = sdss_src['err_z']
                 print('Found SDSS counterpart at RA=' + str(np.around(sdss_ra, decimals=3)) + ' deg and DEC=' + str(np.around(sdss_dec, decimals=3)) + ' deg!')
                 match_spec = SDSS.query_region(coord.SkyCoord(ra, dec, unit=(u.deg, u.deg), frame='icrs'), photoobj_fields=['objid'], specobj_fields=['ra','dec','z','zerr'], spectro=True, radius=3.2 * u.arcsec, data_release=16)
-                if match_spec != None:
+                if match_spec is not None:
                     match_spec_crossid = match_spec[np.where(match_spec['objid'] == sdss_src['objid'])]
                     if len(match_spec_crossid) == 1:
                         sdss_rs = match_spec_crossid['z']
